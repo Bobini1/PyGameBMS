@@ -1,8 +1,13 @@
 import pygame
 import sys
 import re
+import array
+import time
+import simpleaudio
 
 BLACK = (0, 0, 0)
+DESIRED_DT = 8000000
+
 meta = {
     "player": re.compile(r'(?<=#PLAYER )[1-4]$'),
     "genre": re.compile(r'(?<=#GENRE ).+$'),
@@ -183,7 +188,6 @@ def parse(file):
                 wavxx = match.group()
                 wavindex, wavfile = wavxx.strip().split(' ')
                 wavs[wavindex] = wavfile
-                print(wavs[wavindex])
             if key == "bmpxx":
                 bmpxx = match.group()
                 bmpindex, bmpfile = bmpxx.strip().split(' ')
@@ -220,10 +224,25 @@ def keycheck_gameplay():
                 pass
 
 
-def gameplay(window, screen):
+def update(dt, screen):
     screen.fill(BLACK)
     keycheck_gameplay()
     pygame.display.flip()
+
+
+def gameplay(window, screen):
+    dt = DESIRED_DT
+    start = time.perf_counter_ns()
+    while True:
+        update(dt, screen)
+        elapsed_dt = time.perf_counter_ns() - start
+        if elapsed_dt < DESIRED_DT:
+            pygame.time.wait(elapsed_dt//1000000)
+            dt = DESIRED_DT
+        else:
+            dt = elapsed_dt - DESIRED_DT
+            if dt > DESIRED_DT * 10:
+                dt = DESIRED_DT * 10
 
 
 def main():
