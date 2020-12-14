@@ -232,15 +232,17 @@ def update(dt, screen):
 
 def gameplay(window, screen):
     dt = DESIRED_DT
-    start = time.perf_counter_ns()
     while True:
+        start = time.perf_counter_ns()
         update(dt, screen)
         elapsed_dt = time.perf_counter_ns() - start
         if elapsed_dt < DESIRED_DT:
-            pygame.time.wait(elapsed_dt//1000000)
+            pygame.time.wait(elapsed_dt//1000000+1)
             dt = DESIRED_DT
+            print(dt)
         else:
             dt = elapsed_dt - DESIRED_DT
+            print(dt)
             if dt > DESIRED_DT * 10:
                 dt = DESIRED_DT * 10
 
