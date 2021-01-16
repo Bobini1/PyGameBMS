@@ -3,7 +3,8 @@ import sys
 import re
 import array
 import time
-import simpleaudio
+import simpleaudio as sa
+import os
 
 BLACK = (0, 0, 0)
 DESIRED_DT = 8000000
@@ -32,6 +33,7 @@ meta = {
     "bgabase": re.compile(r'(?<=#)\d{3}04:.+$'),
     "bgapoor": re.compile(r'(?<=#)\d{3}06:.+$'),
     "bgm": re.compile(r'(?<=#)\d{3}01:.+$'),
+    "meter": re.compile(r'(?<=#)\d{3}02:.+$'),
     #############################################
     "volwav": re.compile(r'(?<=#RANK )\d+$'),
     "defexrank": re.compile(r'(?<=#DEFEXRANK ).+$'),
@@ -138,11 +140,20 @@ def parse(file):
     """
     wavs = {}
     bmps = {}
-    p1visibles = {}
-    bgms = {}
+    p1visibles = []
+    bgms = []
+
+    subtitle = None
+    subartist = None
+    stagefile = None
+    banner = None
+    difficulty = None
+    lnobj = None
 
     with open(file, 'r') as file_object:
         line = file_object.readline()
+        p1visiblemax = bgmmax = 1
+
         while line:
             key, match = parse_line(line)
             if key == "player":
@@ -161,8 +172,7 @@ def parse(file):
                 subartist = match.group()
                 print("subartist: " + subartist)
             if key == "bpm":
-                bpm = match.group()
-                print("bpm: " + bpm)
+                bpm = float(match.group())
             if key == "rank":
                 rank = match.group()
                 print("rank: " + rank)
@@ -187,7 +197,8 @@ def parse(file):
             if key == "wavxx":
                 wavxx = match.group()
                 wavindex, wavfile = wavxx.strip().split(' ')
-                wavs[wavindex] = wavfile
+                wavs[wavindex] = sa.WaveObject.from_wave_file(PATH + wavfile)
+
             if key == "bmpxx":
                 bmpxx = match.group()
                 bmpindex, bmpfile = bmpxx.strip().split(' ')
@@ -198,21 +209,46 @@ def parse(file):
                 p1visible = match.group()
                 p1visibletime, p1visibledata = p1visible.strip().split(':')
                 p1visibletime, lane = p1visibletime[:3], p1visibletime[4]
-                p1visibles[p1visibletime] = (lane, p1visibledata)
-                print(p1visibles[p1visibletime])
+                p1visibletime = int(p1visibletime)
+                while p1visiblemax < p1visibletime - 1:
+                    p1visibles.append(None)
+                    p1visiblemax += 1
+                if p1visibletime < len(p1visibles):
+                    p1visibles[p1visibletime][lane] = p1visibledata
+                else:
+                    p1visibles.append({lane: p1visibledata})
+                    p1visiblemax += 1
+
             if key == "bgm":
                 bgm = match.group()
                 bgmtime, bgmdata = bgm.strip().split(':')
-                if bgmtime in bgms:
-                    if isinstance(bgms[bgmtime], list):
-                        bgms[bgmtime] = \
-                            [bgms[bgmtime]].append(bgmdata)
-                    else:
-                        bgms[bgmtime] = bgms[bgmtime].append(bgmdata)
+                bgmtime = bgmtime[0:3]
+                bgmtime = int(bgmtime)
+                while bgmmax < bgmtime - 1:
+                    print(bgmtime)
+                    print(bgmmax)
+                    bgms.append(None)
+                    bgmmax += 1
+                if bgmtime < len(bgms):
+                    bgms[bgmtime].append(bgmdata)
                 else:
-                    bgms[bgmtime] = bgmdata
+                    bgms.append([bgmdata])
+                    bgmmax += 1
+
+            if key == "lnobj":
+                lnobj = match.group()
+                print("lnobj: " + lnobj)
 
             line = file_object.readline()
+
+        return ChartData(player, title, subtitle, artist, subartist, bpm,
+                         rank, playlevel, total, stagefile, banner,
+                         difficulty, wavs, bmps, p1visibles, bgms, lnobj)
+
+
+def array_fill(chart):
+    measures = max(len(chart.bgms), len(chart.p1visibles))
+    print(chart.p1visibles)
 
 
 def keycheck_gameplay():
@@ -222,6 +258,32 @@ def keycheck_gameplay():
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_s:
                 pass
+
+
+def divide(chart):
+    meter = 4
+    end = max(len(chart.bgms), len(chart.p1visibles))
+    # amount of desired dts per measure
+    indices = int(
+        (1 / (chart.bpm * meter) * 60 * 1000000000) * end // DESIRED_DT)
+    event_list = [None] * indices
+    indices_per_measure = indices // len(chart.p1visibles)
+    measure_counter = 0
+    note_index = 0
+    # To do: Convert time events to lists!!!!!
+    for measure in chart.p1visibles:
+        for j, lane in measure.items():
+            max_division = len(lane) // 2
+            for i in range(0, max_division):
+                note_index = int(measure_counter * indices_per_measure + \
+                                 indices_per_measure / max_division * i)
+                if lane[0 + i * 2:2 + i * 2] != "00" and lane[
+                                                         0 + i * 2:2 + i * 2] != chart.lnobj:
+                    event_list[note_index] = chart.wavs[
+                        lane[0 + i * 2:2 + i * 2]]
+                    print(note_index)
+        measure_counter += 1
+    print(event_list)
 
 
 def update(dt, screen):
@@ -237,19 +299,18 @@ def gameplay(window, screen):
         update(dt, screen)
         elapsed_dt = time.perf_counter_ns() - start
         if elapsed_dt < DESIRED_DT:
-            pygame.time.wait(elapsed_dt//1000000+1)
+            pygame.time.wait(elapsed_dt // 1000000 + 1)
             dt = DESIRED_DT
-            print(dt)
         else:
             dt = elapsed_dt - DESIRED_DT
-            print(dt)
             if dt > DESIRED_DT * 10:
                 dt = DESIRED_DT * 10
 
 
 def main():
     """The main function of the program"""
-    parse("foon_7all.bms")
+    chart = parse(PATH + "ajisaiN.bms")
+    divide(chart)
     pygame.init()
     # screen size
     screen = pygame.display.set_mode((1920, 1080))
