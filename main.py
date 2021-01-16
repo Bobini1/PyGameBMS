@@ -7,7 +7,33 @@ import simpleaudio as sa
 import os
 
 BLACK = (0, 0, 0)
-DESIRED_DT = 8000000
+DESIRED_DT = 2000000
+PATH = r"C:\Users\Bobini\PycharmProjects\PygameBMS\[6735]Une fleur de la pluie\\"
+
+
+class ChartData(object):
+    # The values passed can be None but it doesn't matter.
+    def __init__(self, player, title, subtitle, artist, subartist, bpm, rank,
+                 playlevel, total, stagefile, banner, difficulty, wavs,
+                 bmps, p1visibles, bgms, lnobj):
+        self.player = player
+        self.title = title
+        self.subtitle = subtitle
+        self.artist = artist
+        self.subartist = subartist
+        self.bpm = bpm
+        self.rank = rank
+        self.playlevel = playlevel
+        self.total = total
+        self.stagefile = stagefile
+        self.banner = banner
+        self.difficulty = difficulty
+        self.wavs = wavs
+        self.bmps = bmps
+        self.p1visibles = p1visibles
+        self.bgms = bgms
+        self.lnobj = lnobj
+
 
 meta = {
     "player": re.compile(r'(?<=#PLAYER )[1-4]$'),
