@@ -2,48 +2,13 @@ import pygame
 import sys
 import re
 import time
-import simpleaudio as sa
-import threading
-from ctypes import c_buffer, windll
-from random import random
-from sys import getfilesystemencoding
-
-
-def winCommand(*command):
-    buf = c_buffer(255)
-    command = ' '.join(command).encode(getfilesystemencoding())
-    int(windll.winmm.mciSendStringA(command, buf, 254, 0))
-    return buf.value
-
-
-def playsoundWin(sound, mode):
-    '''
-    Utilizes windll.winmm. Tested and known to work with MP3 and WAVE on
-    Windows 7 with Python 2.7. Probably works with more file formats.
-    Probably works on Windows XP thru Windows 10. Probably works with all
-    versions of Python.
-
-    Inspired by (but not copied from) Michael Gundlach <gundlach@gmail.com>'s mp3play:
-    https://github.com/michaelgundlach/mp3play
-
-    I never would have tried using windll.winmm without seeing his code.
-    '''
-
-    if mode == 'read':
-        alias = 'playsound_' + str(random())
-        winCommand('open "' + sound + '" alias', alias)
-        winCommand('set', alias, 'time format milliseconds')
-        return alias
-    if mode == 'play':
-        durationInMS = winCommand('status', sound, 'length')
-        winCommand('play', sound, 'from 0 to', durationInMS.decode())
-
+from pygame.locals import *
 
 BLACK = (0, 0, 0)
-DESIRED_DT = 2000000
-PATH = r"C:\Users\PC\PycharmProjects\PygameBMS\Bird Sprite -D.K.R. mix-"
+DESIRED_DT = 600000
+PATH = r"C:\Users\PC\PycharmProjects\PygameBMS\J219"
 WHITE_NUMBER = 1000000000
-
+HIT_WINDOW = 20000000
 
 class ChartData(object):
     # The values passed can be None but it doesn't matter.
@@ -70,14 +35,14 @@ class ChartData(object):
 
 
 LANE_ORDER = {
-    "1": 1,
-    "2": 2,
-    "3": 3,
-    "4": 4,
-    "5": 5,
-    "6": 8,
-    "8": 6,
-    "9": 7,
+    "1": 2,
+    "2": 3,
+    "3": 4,
+    "4": 5,
+    "5": 6,
+    "6": 1,
+    "8": 7,
+    "9": 8,
 }
 
 meta = {
@@ -167,32 +132,6 @@ meta = {
 }
 
 
-def g_event(command):
-    """
-    Function used to run gameplay-specific commands
-
-    :param str command: a gameplay command
-    """
-
-
-def s_event(command):
-    """
-    Function used to process and play sound events
-
-    :param str command: a sound command
-    """
-    pass
-
-
-def v_event(command):
-    """
-    Function used to process and display bga events
-
-    :param str command: a video command
-    """
-    pass
-
-
 def parse_line(line):
     for key, rx in meta.items():
         match = rx.search(line)
@@ -220,6 +159,11 @@ def parse(file):
     banner = None
     difficulty = None
     lnobj = None
+    rank = None
+    stagefile = None
+    total = None
+    banner = None
+    playlevel = None
     p1visiblemax = bgmmax = 1
     with open(file, 'r') as file_object:
         line = file_object.readline()
@@ -267,10 +211,7 @@ def parse(file):
             if key == "wavxx":
                 wavxx = match.group()
                 wavindex, wavfile = wavxx.strip().split(' ')
-                # wavs[wavindex] = sa.WaveObject.from_wave_file(PATH + "\\" + wavfile)
-                # wavs[wavindex] = SoundLoader.load(PATH + "\\" + wavfile)
-                # wavs[wavindex] = pygame.mixer.Sound(PATH + "\\" + wavfile)
-                wavs[wavindex] = playsoundWin(PATH + "\\" + wavfile, 'read')
+                wavs[wavindex] = pygame.mixer.Sound(PATH + "\\" + wavfile)
 
             if key == "bmpxx":
                 bmpxx = match.group()
@@ -284,7 +225,7 @@ def parse(file):
                 p1visibletime, lane = p1visibletime[:3], p1visibletime[4]
                 p1visibletime = int(p1visibletime)
                 while p1visiblemax < p1visibletime - 1:
-                    p1visibles.append(None)
+                    p1visibles.append([])
                     p1visiblemax += 1
                 if p1visibletime < len(p1visibles):
                     p1visibles[p1visibletime][lane] = p1visibledata
@@ -298,9 +239,7 @@ def parse(file):
                 bgmtime = bgmtime[0:3]
                 bgmtime = int(bgmtime)
                 while bgmmax < bgmtime - 1:
-                    print(bgmtime)
-                    print(bgmmax)
-                    bgms.append(None)
+                    bgms.append([])
                     bgmmax += 1
                 if bgmdata != "00":
                     if bgmtime < len(bgms):
@@ -320,51 +259,75 @@ def parse(file):
                          difficulty, wavs, bmps, p1visibles, bgms, lnobj)
 
 
-def array_fill(chart):
-    measures = max(len(chart.bgms), len(chart.p1visibles))
-    print(chart.p1visibles)
+def get_keys():
+    key = pygame.key.get_pressed()
+    column_list = []
+    if key[K_s]:
+        column_list.append(2)
+    if key[K_d]:
+        column_list.append(3)
+    if key[K_f]:
+        column_list.append(4)
+    if key[K_SPACE]:
+        column_list.append(5)
+    if key[K_j]:
+        column_list.append(6)
+    if key[K_k]:
+        column_list.append(7)
+    if key[K_l]:
+        column_list.append(8)
+    if key[K_LSHIFT]:
+        column_list.append(1)
+    return column_list
 
 
 def keycheck_gameplay():
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             sys.exit()
-        if event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_s:
-                pass
+    column_list = get_keys()
+    return column_list
 
 
-def bgm_divide(chart, indices_per_measure, indices):
-    event_list = [None] * indices
+def bgm_divide(chart, time_per_measure, total_time):
+    event_list = []
     for measure_counter, measure in enumerate(chart.bgms):
-        if measure is not None:
+        if measure:
             for lane in measure:
                 max_division = len(lane) // 2
                 for i in range(0, max_division):
-                    note_index = int(measure_counter * indices_per_measure + \
-                                     indices_per_measure / max_division * i + WHITE_NUMBER // DESIRED_DT)
+                    note_time = int(measure_counter * time_per_measure + time_per_measure / max_division * i)
                     if lane[0 + i * 2:2 + i * 2] != "00" and lane[0 + i * 2:2 + i * 2] != chart.lnobj:
-                        if event_list[note_index] is None:
-                            event_list[note_index] = [chart.wavs[lane[0 + i * 2:2 + i * 2]]]
+                        new = 1
+                        for j, event in enumerate(event_list):
+                            if event[0] == note_time:
+                                new = 0
+                                break
+                        if new == 1:
+                            event_list.append([note_time, [chart.wavs[lane[0 + i * 2:2 + i * 2]]]])
                         else:
-                            event_list[note_index].append(chart.wavs[lane[0 + i * 2:2 + i * 2]])
+                            event_list[j][1].append(chart.wavs[lane[0 + i * 2:2 + i * 2]])
     return event_list
 
 
-def p1visible_divide(chart, indices_per_measure, indices):
-    event_list = [None] * indices
+def p1visible_divide(chart, time_per_measure, total_time):
+    event_list = []
     for measure_counter, measure in enumerate(chart.p1visibles):
-        if measure is not None:
+        if measure:
             for key, lane in measure.items():
                 max_division = len(lane) // 2
                 for i in range(0, max_division):
-                    note_index = int(measure_counter * indices_per_measure + \
-                                     indices_per_measure / max_division * i + WHITE_NUMBER // DESIRED_DT)
+                    note_time = int(measure_counter * time_per_measure + time_per_measure / max_division * i)
                     if lane[0 + i * 2:2 + i * 2] != "00" and lane[0 + i * 2:2 + i * 2] != chart.lnobj:
-                        if event_list[note_index] is None:
-                            event_list[note_index] = {key: chart.wavs[lane[0 + i * 2:2 + i * 2]]}
+                        new = 1
+                        for j, event in enumerate(event_list):
+                            if event[0] == note_time:
+                                new = 0
+                                break
+                        if new == 1:
+                            event_list.append([note_time, {key: chart.wavs[lane[0 + i * 2:2 + i * 2]]}])
                         else:
-                            event_list[note_index][key] = (chart.wavs[lane[0 + i * 2:2 + i * 2]])
+                            event_list[j][1][key] = chart.wavs[lane[0 + i * 2:2 + i * 2]]
     return event_list
 
 
@@ -372,66 +335,111 @@ def divide(chart):
     meter = 4
     end = max(len(chart.bgms), len(chart.p1visibles))
     # amount of desired dts per measure
-    indices = int(((meter / chart.bpm * 60 * 1000000000) * end + WHITE_NUMBER) // DESIRED_DT)
-    print("indices: " + str(indices))
-    indices_per_measure = indices // len(chart.p1visibles)
-    indices += WHITE_NUMBER // DESIRED_DT
-    p1visible_list = p1visible_divide(chart, indices_per_measure, indices)
-    bgm_list = bgm_divide(chart, indices_per_measure, indices)
-    return bgm_list, p1visible_list, indices
+    total_time = int(((meter / chart.bpm * 60 * 1000000000) * end))
+    print("length: " + str(total_time))
+    time_per_measure = total_time // len(chart.p1visibles)
+    p1visible_list = p1visible_divide(chart, time_per_measure, total_time)
+    bgm_list = bgm_divide(chart, time_per_measure, total_time)
+    return bgm_list, p1visible_list, total_time
 
 
-def draw_notes(init_time, p1visible_list, window, screen, note_positions):
-    if p1visible_list[init_time] is not None:
-        for lane, key in p1visible_list[init_time].items():
-            # 8 is the number of lanes.
-            new_note = pygame.Rect(window[2] / 8 * (LANE_ORDER[lane] - 1), 0, 100, 50)
-            note_positions.append(new_note)
-    for index, note in enumerate(note_positions):
-        if note is not None:
-            pygame.draw.rect(screen, "blue", note)
-            note_positions[index] = note.move(0, 2)
-            if not window.contains(note):
-                del note_positions[index]
+def draw_notes(window, screen, note_positions, judgements):
+    for column, note_position in enumerate(note_positions):
+        if note_position:
+            for index, note in enumerate(note_position):
+                if note and "rect" in note:
+                    if (column + 1 == 2 or column + 1 == 4 or column + 1 == 6 or column + 1 == 8):
+                        pygame.draw.rect(screen, "white", note["rect"])
+                    elif (column + 1 == 3 or column + 1 == 5 or column + 1 == 7):
+                        pygame.draw.rect(screen, "blue", note["rect"])
+                    elif column + 1 == 1:
+                        pygame.draw.rect(screen, "red", note["rect"])
+                    note_positions[column][index]["rect"] = note["rect"].move(0, 2)
+                    if not window.contains(note["rect"]):
+                        del note_positions[column][index]["rect"]
+                        judgements["miss"] += 1
 
-
-def update(screen, bgm_list, p1visible_list, index, window, note_positions):
-    screen.fill(BLACK)
-    keycheck_gameplay()
-    draw_notes(index + WHITE_NUMBER // DESIRED_DT, p1visible_list, window, screen, note_positions)
-    if p1visible_list[index] is not None:
-        for key, sound in p1visible_list[index].items():
-            if sound is not None:
-                playsoundWin(sound, 'play')
-    if bgm_list[index] is not None:
-        for sound in bgm_list[index]:
-            if sound is not None:
-                playsoundWin(sound, 'play')
     pygame.display.flip()
 
 
-def gameplay(window, screen, bgm_list, p1visible_list, chart, indices):
-    dt = DESIRED_DT
-    note_positions = []
-    print(chart.bgms)
-    print(chart.p1visibles)
-    for index in range(0, indices):
-        start = time.perf_counter_ns()
-        update(screen, bgm_list, p1visible_list, index, window, note_positions)
-        elapsed_dt = time.perf_counter_ns() - start
-        if elapsed_dt < DESIRED_DT:
-            pygame.time.wait((DESIRED_DT - elapsed_dt) // 1000000)
+def add_notes(column, window, note_positions, sound, note_time):
+    # 8 is the number of columns.
+    new_note = pygame.Rect(window[2] / 8 * (LANE_ORDER[column] - 1), 0, 200, 100)
+    note_positions[LANE_ORDER[column]-1].append({"rect": new_note, "sound": sound, "time": note_time})
+    return note_positions[LANE_ORDER[column]-1]
+
+
+def update(screen, bgm_list, p1visible_list, current_time, window, note_positions):
+    screen.fill(BLACK)
+    for i, p1visible_event in enumerate(p1visible_list[0:9]):
+        if p1visible_event[0] < current_time + 1000000000:
+            for key, sound in p1visible_event[1].items():
+                note_positions[LANE_ORDER[key]-1] = add_notes(key, window, note_positions, sound, current_time + 200000000)
+            del p1visible_list[i]
+    for i, bgm_event in enumerate(bgm_list[0:9]):
+        if bgm_event[0] < current_time:
+            for sound in bgm_event[1]:
+                sound.play()
+            del bgm_list[i]
+    return note_positions
+
+
+def play_notes(column_list, p1visible_list, note_positions, current_time, window, judgements, ignore_list):
+    keysound_to_play = None
+    for column in column_list:
+        if note_positions[column-1] and (column not in ignore_list):
+            for index, note in enumerate(note_positions[column-1]):
+                if note["time"] - HIT_WINDOW < current_time:
+                    keysound_to_play = {"sound": note["sound"], "time": note["time"]}
+                    del note_positions[column-1][0:index]
+                else:
+                    break
+            if keysound_to_play is not None:
+                for index, note in enumerate(note_positions[column-1]):
+                    if note["time"] > keysound_to_play["time"]:
+                        note_positions[column-1].insert(index, keysound_to_play)
+                        del note_positions[column-1][index-1]
+                        break
+                keysound_to_play["sound"].play()
+                if column not in ignore_list:
+                    ignore_list.append(column)
+                if -10000000 < keysound_to_play["time"] - current_time < 10000000:
+                    judgements["great"] += 1
+                if -20000000 < keysound_to_play["time"] - current_time < 20000000:
+                    judgements["bad"] += 1
+            print(note_positions[column-1])
+    return ignore_list, note_positions
+
+
+def gameplay(window, screen, bgm_list, p1visible_list):
+    note_positions = [[], [], [], [], [], [], [], []]
+    start = time.perf_counter_ns()
+    judgements = {"great": 0, "bad": 0, "miss": 0}
+    ignore_list = []
+    while True:
+        note_positions = update(screen, bgm_list, p1visible_list, time.perf_counter_ns() - start, window, note_positions)
+        draw_notes(window, screen, note_positions, judgements)
+        column_list = keycheck_gameplay()
+        if column_list is not None:
+            for column in ignore_list:
+                if column not in column_list:
+                    ignore_list.remove(column)
+            ignore_list, note_positions = play_notes(column_list, p1visible_list, note_positions, time.perf_counter_ns() - start, window, judgements, ignore_list)
 
 
 def main():
     """The main function of the program"""
-    chart = parse(PATH + "\\bs_7a.bme")
-    bgm_list, p1visible_list, indices = divide(chart)
+    pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=1024)
+    pygame.mixer.set_num_channels(100)
+    chart = parse(PATH + "\\J219.bms")
+    bgm_list, p1visible_list, total_time = divide(chart)
     pygame.init()
     # screen size
-    screen = pygame.display.set_mode((1920, 1080))
+    screen = pygame.display.set_mode((1920, 1080), DOUBLEBUF | HWSURFACE, depth=8)
+    pygame.event.set_allowed([KEYDOWN, KEYUP, QUIT])
+    screen.set_alpha(None)
     window = screen.get_rect()
-    gameplay(window, screen, bgm_list, p1visible_list, chart, indices)
+    gameplay(window, screen, bgm_list, p1visible_list)
 
 
 if __name__ == "__main__":
