@@ -5,12 +5,22 @@ import time
 from pygame.locals import *
 
 BLACK = (0, 0, 0)
+RED = (255, 0, 0)
+PURPLE = (255, 0, 255)
+WHITE = (255, 255, 255)
+BLUE = (0, 255, 255)
 DESIRED_DT = 600000
 PATH = r"C:\Users\PC\PycharmProjects\PygameBMS\J219"
 WHITE_NUMBER = 1000000000
-HIT_WINDOW = 20000000
+GREEN_NUMBER = 500000000
+HIT_WINDOW = 60000000
+SPEED = 2
+
 
 class ChartData(object):
+    """
+    A chart object will be useful for passing chart data to functions.
+    """
     # The values passed can be None but it doesn't matter.
     def __init__(self, player, title, subtitle, artist, subartist, bpm, rank,
                  playlevel, total, stagefile, banner, difficulty, wavs,
@@ -35,6 +45,7 @@ class ChartData(object):
 
 
 LANE_ORDER = {
+    # We want to translate the channels from the bms file to the actual lane order the player sees.
     "1": 2,
     "2": 3,
     "3": 4,
@@ -45,7 +56,8 @@ LANE_ORDER = {
     "9": 8,
 }
 
-meta = {
+META = {
+    # Exhaustive list of bms format commands. Most currently unimplemented.
     "player": re.compile(r'(?<=#PLAYER )[1-4]$'),
     "genre": re.compile(r'(?<=#GENRE ).+$'),
     "title": re.compile(r'(?<=#TITLE ).+$'),
@@ -133,7 +145,13 @@ meta = {
 
 
 def parse_line(line):
-    for key, rx in meta.items():
+    """
+    A simple function used for searching for regex matches in a line.
+    :param line: The line to be parsed.
+    :return1: The key that was matched.
+    :return2: The data from that line.
+    """
+    for key, rx in META.items():
         match = rx.search(line)
         if match:
             return key, match
@@ -155,8 +173,8 @@ def parse(file):
 
     subtitle = None
     subartist = None
-    stagefile = None
-    banner = None
+    # stagefile = None
+    # banner = None
     difficulty = None
     lnobj = None
     rank = None
@@ -210,18 +228,18 @@ def parse(file):
 
             if key == "wavxx":
                 wavxx = match.group()
-                wavindex, wavfile = wavxx.strip().split(' ')
+                wavindex, wavfile = wavxx.strip().split(' ', 1)
                 wavs[wavindex] = pygame.mixer.Sound(PATH + "\\" + wavfile)
 
             if key == "bmpxx":
                 bmpxx = match.group()
-                bmpindex, bmpfile = bmpxx.strip().split(' ')
+                bmpindex, bmpfile = bmpxx.strip().split(' ', 1)
                 bmps[bmpindex] = bmpfile
                 print(bmps[bmpindex])
 
             if key == "p1visible":
                 p1visible = match.group()
-                p1visibletime, p1visibledata = p1visible.strip().split(':')
+                p1visibletime, p1visibledata = p1visible.strip().split(':', 1)
                 p1visibletime, lane = p1visibletime[:3], p1visibletime[4]
                 p1visibletime = int(p1visibletime)
                 while p1visiblemax < p1visibletime - 1:
@@ -235,7 +253,7 @@ def parse(file):
 
             if key == "bgm":
                 bgm = match.group()
-                bgmtime, bgmdata = bgm.strip().split(':')
+                bgmtime, bgmdata = bgm.strip().split(':', 1)
                 bgmtime = bgmtime[0:3]
                 bgmtime = int(bgmtime)
                 while bgmmax < bgmtime - 1:
@@ -289,6 +307,16 @@ def keycheck_gameplay():
     return column_list
 
 
+def keycheck_result():
+    """
+    Handles the Pygame event queue in the result screen.
+    :return:
+    """
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+            sys.exit()
+
+
 def bgm_divide(chart, time_per_measure, total_time):
     event_list = []
     for measure_counter, measure in enumerate(chart.bgms):
@@ -296,17 +324,18 @@ def bgm_divide(chart, time_per_measure, total_time):
             for lane in measure:
                 max_division = len(lane) // 2
                 for i in range(0, max_division):
-                    note_time = int(measure_counter * time_per_measure + time_per_measure / max_division * i)
-                    if lane[0 + i * 2:2 + i * 2] != "00" and lane[0 + i * 2:2 + i * 2] != chart.lnobj:
-                        new = 1
-                        for j, event in enumerate(event_list):
-                            if event[0] == note_time:
-                                new = 0
-                                break
-                        if new == 1:
-                            event_list.append([note_time, [chart.wavs[lane[0 + i * 2:2 + i * 2]]]])
-                        else:
-                            event_list[j][1].append(chart.wavs[lane[0 + i * 2:2 + i * 2]])
+                    if lane[0 + i * 2:2 + i * 2] in chart.wavs:
+                        note_time = int(measure_counter * time_per_measure + time_per_measure / max_division * i)
+                        if lane[0 + i * 2:2 + i * 2] != "00" and lane[0 + i * 2:2 + i * 2] != chart.lnobj:
+                            new = 1
+                            for j, event in enumerate(event_list):
+                                if event[0] == note_time:
+                                    new = 0
+                                    break
+                            if new == 1:
+                                event_list.append([note_time, [chart.wavs[lane[0 + i * 2:2 + i * 2]]]])
+                            else:
+                                event_list[j][1].append(chart.wavs[lane[0 + i * 2:2 + i * 2]])
     return event_list
 
 
@@ -317,17 +346,18 @@ def p1visible_divide(chart, time_per_measure, total_time):
             for key, lane in measure.items():
                 max_division = len(lane) // 2
                 for i in range(0, max_division):
-                    note_time = int(measure_counter * time_per_measure + time_per_measure / max_division * i)
-                    if lane[0 + i * 2:2 + i * 2] != "00" and lane[0 + i * 2:2 + i * 2] != chart.lnobj:
-                        new = 1
-                        for j, event in enumerate(event_list):
-                            if event[0] == note_time:
-                                new = 0
-                                break
-                        if new == 1:
-                            event_list.append([note_time, {key: chart.wavs[lane[0 + i * 2:2 + i * 2]]}])
-                        else:
-                            event_list[j][1][key] = chart.wavs[lane[0 + i * 2:2 + i * 2]]
+                    if lane[0 + i * 2:2 + i * 2] in chart.wavs:
+                        note_time = int(measure_counter * time_per_measure + time_per_measure / max_division * i)
+                        if lane[0 + i * 2:2 + i * 2] != "00" and lane[0 + i * 2:2 + i * 2] != chart.lnobj:
+                            new = 1
+                            for j, event in enumerate(event_list):
+                                if event[0] == note_time:
+                                    new = 0
+                                    break
+                            if new == 1:
+                                event_list.append([note_time, {key: chart.wavs[lane[0 + i * 2:2 + i * 2]]}])
+                            else:
+                                event_list[j][1][key] = chart.wavs[lane[0 + i * 2:2 + i * 2]]
     return event_list
 
 
@@ -343,38 +373,49 @@ def divide(chart):
     return bgm_list, p1visible_list, total_time
 
 
-def draw_notes(window, screen, note_positions, judgements):
+def draw_notes(window, screen, note_positions, judgements, current_time, current_judge, miss, miss_rect, great, great_rect, bad, bad_rect):
     for column, note_position in enumerate(note_positions):
         if note_position:
             for index, note in enumerate(note_position):
-                if note and "rect" in note:
-                    if (column + 1 == 2 or column + 1 == 4 or column + 1 == 6 or column + 1 == 8):
-                        pygame.draw.rect(screen, "white", note["rect"])
-                    elif (column + 1 == 3 or column + 1 == 5 or column + 1 == 7):
-                        pygame.draw.rect(screen, "blue", note["rect"])
-                    elif column + 1 == 1:
-                        pygame.draw.rect(screen, "red", note["rect"])
-                    note_positions[column][index]["rect"] = note["rect"].move(0, 2)
-                    if not window.contains(note["rect"]):
-                        del note_positions[column][index]["rect"]
-                        judgements["miss"] += 1
-
+                if column + 1 == 2 or column + 1 == 4 or column + 1 == 6 or column + 1 == 8:
+                    pygame.draw.rect(screen, "white", note["rect"])
+                elif column + 1 == 3 or column + 1 == 5 or column + 1 == 7:
+                    pygame.draw.rect(screen, "blue", note["rect"])
+                elif column + 1 == 1:
+                    pygame.draw.rect(screen, "red", note["rect"])
+                if (time.perf_counter_ns() - note["time"]) % 50 == 0:
+                    note_positions[column][index]["rect"] = note["rect"].move(0, SPEED)
+                if note["time"] + HIT_WINDOW < current_time:
+                    del note_positions[column][index]
+                    judgements["miss"] += 1
+                    current_judge = {"time": current_time, "type": "miss"}
+    if current_judge is not None:
+        if current_time > current_judge["time"] + 500000000:
+            current_judge = None
+        elif current_judge["type"] == "miss":
+            screen.blit(miss, miss_rect)
+        elif current_judge["type"] == "bad":
+            screen.blit(bad, bad_rect)
+        elif current_judge["type"] == "great":
+            screen.blit(great, great_rect)
+    pygame.draw.rect(screen, "white", Rect(0, 750, 1920, 30))
     pygame.display.flip()
+    return judgements, current_judge
 
 
 def add_notes(column, window, note_positions, sound, note_time):
     # 8 is the number of columns.
     new_note = pygame.Rect(window[2] / 8 * (LANE_ORDER[column] - 1), 0, 200, 100)
-    note_positions[LANE_ORDER[column]-1].append({"rect": new_note, "sound": sound, "time": note_time})
-    return note_positions[LANE_ORDER[column]-1]
+    note_positions[LANE_ORDER[column] - 1].append({"rect": new_note, "time": note_time})
+    return note_positions[LANE_ORDER[column] - 1]
 
 
 def update(screen, bgm_list, p1visible_list, current_time, window, note_positions):
     screen.fill(BLACK)
     for i, p1visible_event in enumerate(p1visible_list[0:9]):
-        if p1visible_event[0] < current_time + 1000000000:
+        if p1visible_event[0] < current_time + GREEN_NUMBER:
             for key, sound in p1visible_event[1].items():
-                note_positions[LANE_ORDER[key]-1] = add_notes(key, window, note_positions, sound, current_time + 200000000)
+                note_positions[LANE_ORDER[key] - 1] = add_notes(key, window, note_positions, sound, current_time + GREEN_NUMBER)
             del p1visible_list[i]
     for i, bgm_event in enumerate(bgm_list[0:9]):
         if bgm_event[0] < current_time:
@@ -384,31 +425,69 @@ def update(screen, bgm_list, p1visible_list, current_time, window, note_position
     return note_positions
 
 
-def play_notes(column_list, p1visible_list, note_positions, current_time, window, judgements, ignore_list):
-    keysound_to_play = None
+def play_notes(column_list, note_positions, current_time, judgements, ignore_list, current_judge, p1visible_sounds, current_keysound):
     for column in column_list:
-        if note_positions[column-1] and (column not in ignore_list):
-            for index, note in enumerate(note_positions[column-1]):
-                if note["time"] - HIT_WINDOW < current_time:
-                    keysound_to_play = {"sound": note["sound"], "time": note["time"]}
-                    del note_positions[column-1][0:index]
-                else:
+        if p1visible_sounds[column-1] and (column not in ignore_list):
+            to_delete = None
+            for index, sound_event in enumerate(p1visible_sounds[column-1]):
+                if sound_event["time"] - HIT_WINDOW < current_time < sound_event["time"] + HIT_WINDOW:
+                    current_keysound[column-1] = sound_event
+                    to_delete = index
+                    del note_positions[column-1][0]
+                    if -HIT_WINDOW / 2 < current_keysound[column-1]["time"] - current_time < HIT_WINDOW / 2:
+                        judgements["great"] += 1
+                        current_judge = {"time": current_keysound[column-1]["time"], "type": "great"}
+                    elif -HIT_WINDOW < current_keysound[column-1]["time"] - current_time < HIT_WINDOW:
+                        judgements["bad"] += 1
+                        current_judge = {"time": current_keysound[column-1]["time"], "type": "bad"}
                     break
-            if keysound_to_play is not None:
-                for index, note in enumerate(note_positions[column-1]):
-                    if note["time"] > keysound_to_play["time"]:
-                        note_positions[column-1].insert(index, keysound_to_play)
-                        del note_positions[column-1][index-1]
-                        break
-                keysound_to_play["sound"].play()
-                if column not in ignore_list:
-                    ignore_list.append(column)
-                if -10000000 < keysound_to_play["time"] - current_time < 10000000:
-                    judgements["great"] += 1
-                if -20000000 < keysound_to_play["time"] - current_time < 20000000:
-                    judgements["bad"] += 1
-            print(note_positions[column-1])
-    return ignore_list, note_positions
+                elif sound_event["time"] - HIT_WINDOW <= current_time:
+                    current_keysound[column - 1] = sound_event
+                    to_delete = index
+                elif current_time <= sound_event["time"] + HIT_WINDOW:
+                    break
+            if current_keysound[column-1] is not None:
+                current_keysound[column-1]["sound"].play()
+            if column not in ignore_list:
+                ignore_list.append(column)
+            if to_delete is not None:
+                del p1visible_sounds[column-1][0:to_delete+1]
+
+    return ignore_list, note_positions, judgements, current_judge, p1visible_sounds, current_keysound
+
+
+def eval_screen(window, screen, judgements):
+    score = 0
+    score += judgements["great"] * 2 + judgements["bad"]
+    eval_font = pygame.font.Font("Roboto-Regular.ttf", 150)
+    great = eval_font.render(f"GREAT: {judgements['great']}", True, BLUE)
+    great_rect = great.get_rect()
+    great_rect.topleft = (0, 0)
+    bad = eval_font.render(f"BAD: {judgements['bad']}", True, PURPLE)
+    bad_rect = bad.get_rect()
+    bad_rect.topleft = great_rect.bottomleft
+    miss = eval_font.render(f"MISS: {judgements['miss']}", True, RED)
+    miss_rect = miss.get_rect()
+    miss_rect.topleft = bad_rect.bottomleft
+    result = eval_font.render(f"result: {score / ((judgements['great'] + judgements['bad'] + judgements['miss']) * 2) * 100:.2f}%", True, WHITE)
+    result_rect = result.get_rect()
+    result_rect.midleft = window.center
+    while True:
+        keycheck_result()
+        screen.fill(BLACK)
+        screen.blit(miss, miss_rect)
+        screen.blit(great, great_rect)
+        screen.blit(bad, bad_rect)
+        screen.blit(result, result_rect)
+        pygame.display.flip()
+
+
+def p1visible_sounds_divide(p1visible_list):
+    p1visible_sounds = [[], [], [], [], [], [], [], []]
+    for i, p1visible_event in enumerate(p1visible_list):
+        for key, sound in p1visible_event[1].items():
+            p1visible_sounds[LANE_ORDER[key]-1].append({"sound": sound, "time": p1visible_list[i][0]})
+    return p1visible_sounds
 
 
 def gameplay(window, screen, bgm_list, p1visible_list):
@@ -416,15 +495,31 @@ def gameplay(window, screen, bgm_list, p1visible_list):
     start = time.perf_counter_ns()
     judgements = {"great": 0, "bad": 0, "miss": 0}
     ignore_list = []
-    while True:
-        note_positions = update(screen, bgm_list, p1visible_list, time.perf_counter_ns() - start, window, note_positions)
-        draw_notes(window, screen, note_positions, judgements)
+    end = max(p1visible_list[-1][0], bgm_list[-1][0])
+    gameplay_font = pygame.font.Font("Roboto-Regular.ttf", 150)
+    great = gameplay_font.render("GREAT", True, BLUE)
+    great_rect = great.get_rect()
+    great_rect.midtop = window.midtop
+    bad = gameplay_font.render("BAD", True, PURPLE)
+    bad_rect = bad.get_rect()
+    bad_rect.midtop = window.midtop
+    miss = gameplay_font.render("MISS", True, RED)
+    miss_rect = miss.get_rect()
+    miss_rect.midtop = window.midtop
+    current_judge = None
+    current_keysound = [None, None, None, None, None, None, None, None]
+    p1visible_sounds = p1visible_sounds_divide(p1visible_list)
+    while time.perf_counter_ns() - start < end + 2000000000:
+        note_positions = update(screen, bgm_list, p1visible_list, time.perf_counter_ns() - start, window,
+                                note_positions)
+        judgements, current_judge = draw_notes(window, screen, note_positions, judgements, time.perf_counter_ns() - start, current_judge, miss, miss_rect, great, great_rect, bad, bad_rect)
         column_list = keycheck_gameplay()
         if column_list is not None:
             for column in ignore_list:
                 if column not in column_list:
                     ignore_list.remove(column)
-            ignore_list, note_positions = play_notes(column_list, p1visible_list, note_positions, time.perf_counter_ns() - start, window, judgements, ignore_list)
+            ignore_list, note_positions, judgements, current_judge, p1visible_sounds, current_keysound = play_notes(column_list, note_positions, time.perf_counter_ns() - start, judgements, ignore_list, current_judge, p1visible_sounds, current_keysound)
+    eval_screen(window, screen, judgements)
 
 
 def main():
@@ -434,8 +529,9 @@ def main():
     chart = parse(PATH + "\\J219.bms")
     bgm_list, p1visible_list, total_time = divide(chart)
     pygame.init()
+    pygame.font.init()
     # screen size
-    screen = pygame.display.set_mode((1920, 1080), DOUBLEBUF | HWSURFACE, depth=8)
+    screen = pygame.display.set_mode((1920, 1080), DOUBLEBUF | HWSURFACE, depth=16)
     pygame.event.set_allowed([KEYDOWN, KEYUP, QUIT])
     screen.set_alpha(None)
     window = screen.get_rect()
