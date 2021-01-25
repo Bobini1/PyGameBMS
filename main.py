@@ -2,6 +2,8 @@ import pygame
 import sys
 import re
 import time
+import os
+import pickle
 from pygame.locals import *
 
 BLACK = (0, 0, 0)
@@ -10,11 +12,9 @@ PURPLE = (255, 0, 255)
 WHITE = (255, 255, 255)
 BLUE = (0, 255, 255)
 DESIRED_DT = 600000
-PATH = r"C:\Users\PC\PycharmProjects\PygameBMS\J219"
-WHITE_NUMBER = 1000000000
-GREEN_NUMBER = 500000000
+WHITE_NUMBER = 1000
+GREEN_NUMBER = 600000000
 HIT_WINDOW = 60000000
-SPEED = 2
 
 
 class ChartData(object):
@@ -24,7 +24,7 @@ class ChartData(object):
     # The values passed can be None but it doesn't matter.
     def __init__(self, player, title, subtitle, artist, subartist, bpm, rank,
                  playlevel, total, stagefile, banner, difficulty, wavs,
-                 bmps, p1visibles, bgms, lnobj):
+                 bmps, p1visibles, bgms, lnobj, notecount, filepath, file):
         self.player = player
         self.title = title
         self.subtitle = subtitle
@@ -42,6 +42,9 @@ class ChartData(object):
         self.p1visibles = p1visibles
         self.bgms = bgms
         self.lnobj = lnobj
+        self.notecount = notecount
+        self.filepath = filepath
+        self.file = file
 
 
 LANE_ORDER = {
@@ -147,6 +150,7 @@ META = {
 def parse_line(line):
     """
     A simple function used for searching for regex matches in a line.
+
     :param line: The line to be parsed.
     :return1: The key that was matched.
     :return2: The data from that line.
@@ -159,7 +163,70 @@ def parse_line(line):
     return None, None
 
 
-def parse(file):
+def parse_db(filepath, file):
+    title = "No title"
+    subtitle = ""
+    subartist = ""
+    # stagefile = None
+    # banner = None
+    difficulty = None
+    lnobj = None
+    rank = 2
+    stagefile = None
+    total = None
+    banner = None
+    playlevel = "3"
+
+    notecount = 0
+    with open(filepath + file, 'r') as file_object:
+        line = file_object.readline()
+
+        while line:
+            key, match = parse_line(line)
+            if key == "player":
+                player = match.group()
+            if key == "title":
+                title = match.group()
+            if key == "subtitle":
+                subtitle = match.group()
+            if key == "artist":
+                artist = match.group()
+            if key == "subartist":
+                subartist = match.group()
+            if key == "bpm":
+                bpm = float(match.group())
+            if key == "rank":
+                rank = int(match.group())
+            if key == "playlevel":
+                playlevel = match.group()
+            if key == "total":
+                total = int(match.group())
+            if key == "stagefile":
+                stagefile = match.group()
+            if key == "banner":
+                banner = pygame.image.load(filepath + match.group())
+            if key == "difficulty":
+                difficulty = int(match.group())
+
+            if key == "p1visible":
+                p1visible = match.group()
+                p1visibledata = p1visible.strip().split(':', 1)[1]
+                for i in range(0, len(p1visibledata) // 2):
+                    if p1visibledata[0 + i * 2:2 + i * 2]:
+                        notecount += 1
+
+            if key == "lnobj":
+                lnobj = match.group()
+                print("lnobj: " + lnobj)
+
+            line = file_object.readline()
+
+        return ChartData(player, title, subtitle, artist, subartist, bpm,
+                         rank, playlevel, total, stagefile, banner,
+                         difficulty, wavs=None, bmps=None, p1visibles=None, bgms=None, lnobj=None, notecount=notecount, filepath=filepath, file=file)
+
+
+def parse(filepath, file):
     """
     The function used to parse the bms file into internal objects and variables
 
@@ -171,19 +238,20 @@ def parse(file):
     p1visibles = []
     bgms = []
 
-    subtitle = None
-    subartist = None
+    title = "No title"
+    subtitle = ""
+    subartist = ""
     # stagefile = None
     # banner = None
     difficulty = None
     lnobj = None
-    rank = None
+    rank = 2
     stagefile = None
     total = None
     banner = None
-    playlevel = None
+    playlevel = 3
     p1visiblemax = bgmmax = 1
-    with open(file, 'r') as file_object:
+    with open(filepath + file, 'r') as file_object:
         line = file_object.readline()
 
         while line:
@@ -206,14 +274,14 @@ def parse(file):
             if key == "bpm":
                 bpm = float(match.group())
             if key == "rank":
-                rank = match.group()
-                print("rank: " + rank)
+                rank = int(match.group())
+                print("rank: ", rank)
             if key == "playlevel":
                 playlevel = match.group()
                 print("playlevel: " + playlevel)
             if key == "total":
-                total = match.group()
-                print("total: " + total)
+                total = int(match.group())
+                print("total: ", total)
             if key == "stagefile":
                 stagefile = match.group()
                 print("stagefile: " + stagefile)
@@ -221,15 +289,15 @@ def parse(file):
                 banner = match.group()
                 print("banner: " + banner)
             if key == "difficulty":
-                difficulty = match.group()
-                print("difficulty: " + difficulty)
+                difficulty = int(match.group())
+                print("difficulty: ", difficulty)
             if key == "random" or key == "rondam":
-                raise NameError("Unsupported command")
+                raise NameError("Unsupported command: random")
 
             if key == "wavxx":
                 wavxx = match.group()
                 wavindex, wavfile = wavxx.strip().split(' ', 1)
-                wavs[wavindex] = pygame.mixer.Sound(PATH + "\\" + wavfile)
+                wavs[wavindex] = pygame.mixer.Sound(filepath + wavfile)
 
             if key == "bmpxx":
                 bmpxx = match.group()
@@ -274,7 +342,7 @@ def parse(file):
 
         return ChartData(player, title, subtitle, artist, subartist, bpm,
                          rank, playlevel, total, stagefile, banner,
-                         difficulty, wavs, bmps, p1visibles, bgms, lnobj)
+                         difficulty, wavs, bmps, p1visibles, bgms, lnobj, notecount=None, filepath=filepath, file=None)
 
 
 def get_keys():
@@ -303,8 +371,27 @@ def keycheck_gameplay():
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             sys.exit()
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_ESCAPE:
+                return True
     column_list = get_keys()
     return column_list
+
+
+def keycheck_select():
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+            sys.exit()
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_UP:
+                return -1
+            if event.key == pygame.K_DOWN:
+                return 1
+            if event.key == pygame.K_RETURN:
+                return 2
+            if event.key == pygame.K_ESCAPE:
+                return 3
+    return 0
 
 
 def keycheck_result():
@@ -315,6 +402,10 @@ def keycheck_result():
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             sys.exit()
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_ESCAPE or event.key == pygame.K_RETURN:
+                return True
+    return False
 
 
 def bgm_divide(chart, time_per_measure, total_time):
@@ -327,12 +418,12 @@ def bgm_divide(chart, time_per_measure, total_time):
                     if lane[0 + i * 2:2 + i * 2] in chart.wavs:
                         note_time = int(measure_counter * time_per_measure + time_per_measure / max_division * i)
                         if lane[0 + i * 2:2 + i * 2] != "00" and lane[0 + i * 2:2 + i * 2] != chart.lnobj:
-                            new = 1
+                            new = True
                             for j, event in enumerate(event_list):
                                 if event[0] == note_time:
-                                    new = 0
+                                    new = False
                                     break
-                            if new == 1:
+                            if new is True:
                                 event_list.append([note_time, [chart.wavs[lane[0 + i * 2:2 + i * 2]]]])
                             else:
                                 event_list[j][1].append(chart.wavs[lane[0 + i * 2:2 + i * 2]])
@@ -349,12 +440,12 @@ def p1visible_divide(chart, time_per_measure, total_time):
                     if lane[0 + i * 2:2 + i * 2] in chart.wavs:
                         note_time = int(measure_counter * time_per_measure + time_per_measure / max_division * i)
                         if lane[0 + i * 2:2 + i * 2] != "00" and lane[0 + i * 2:2 + i * 2] != chart.lnobj:
-                            new = 1
+                            new = True
                             for j, event in enumerate(event_list):
                                 if event[0] == note_time:
-                                    new = 0
+                                    new = False
                                     break
-                            if new == 1:
+                            if new is True:
                                 event_list.append([note_time, {key: chart.wavs[lane[0 + i * 2:2 + i * 2]]}])
                             else:
                                 event_list[j][1][key] = chart.wavs[lane[0 + i * 2:2 + i * 2]]
@@ -374,6 +465,7 @@ def divide(chart):
 
 
 def draw_notes(window, screen, note_positions, judgements, current_time, current_judge, miss, miss_rect, great, great_rect, bad, bad_rect):
+    pygame.draw.rect(screen, "DarkSlateGray", Rect(window.width / 5, 0, window.width * 0.6, WHITE_NUMBER))
     for column, note_position in enumerate(note_positions):
         if note_position:
             for index, note in enumerate(note_position):
@@ -383,8 +475,7 @@ def draw_notes(window, screen, note_positions, judgements, current_time, current
                     pygame.draw.rect(screen, "blue", note["rect"])
                 elif column + 1 == 1:
                     pygame.draw.rect(screen, "red", note["rect"])
-                if (time.perf_counter_ns() - note["time"]) % 50 == 0:
-                    note_positions[column][index]["rect"] = note["rect"].move(0, SPEED)
+                note_positions[column][index]["rect"].top = (WHITE_NUMBER - ((note["time"] - current_time) / GREEN_NUMBER) * WHITE_NUMBER)
                 if note["time"] + HIT_WINDOW < current_time:
                     del note_positions[column][index]
                     judgements["miss"] += 1
@@ -398,14 +489,14 @@ def draw_notes(window, screen, note_positions, judgements, current_time, current
             screen.blit(bad, bad_rect)
         elif current_judge["type"] == "great":
             screen.blit(great, great_rect)
-    pygame.draw.rect(screen, "white", Rect(0, 750, 1920, 30))
+    pygame.draw.rect(screen, "white", Rect(0, WHITE_NUMBER, window.width, 30))
     pygame.display.flip()
     return judgements, current_judge
 
 
-def add_notes(column, window, note_positions, sound, note_time):
+def add_notes(column, window, note_positions, note_time):
     # 8 is the number of columns.
-    new_note = pygame.Rect(window[2] / 8 * (LANE_ORDER[column] - 1), 0, 200, 100)
+    new_note = pygame.Rect(window.width / 5 + window.width * 0.6 / 8 * (LANE_ORDER[column] - 1), 0, 100, 50)
     note_positions[LANE_ORDER[column] - 1].append({"rect": new_note, "time": note_time})
     return note_positions[LANE_ORDER[column] - 1]
 
@@ -415,7 +506,7 @@ def update(screen, bgm_list, p1visible_list, current_time, window, note_position
     for i, p1visible_event in enumerate(p1visible_list[0:9]):
         if p1visible_event[0] < current_time + GREEN_NUMBER:
             for key, sound in p1visible_event[1].items():
-                note_positions[LANE_ORDER[key] - 1] = add_notes(key, window, note_positions, sound, current_time + GREEN_NUMBER)
+                note_positions[LANE_ORDER[key] - 1] = add_notes(key, window, note_positions, current_time + GREEN_NUMBER)
             del p1visible_list[i]
     for i, bgm_event in enumerate(bgm_list[0:9]):
         if bgm_event[0] < current_time:
@@ -473,13 +564,89 @@ def eval_screen(window, screen, judgements):
     result_rect = result.get_rect()
     result_rect.midleft = window.center
     while True:
-        keycheck_result()
+        if keycheck_result() is True:
+            break
         screen.fill(BLACK)
         screen.blit(miss, miss_rect)
         screen.blit(great, great_rect)
         screen.blit(bad, bad_rect)
         screen.blit(result, result_rect)
         pygame.display.flip()
+
+
+def load_charts():
+    chart_list = []
+    # I can't pickle pygame surfaces so db creation is currently unfinished.
+    if not os.path.isfile('db.pkl'):
+        for subdir, dirs, files in os.walk(os.path.dirname(os.path.realpath(__file__))):
+            for file in files:
+                filepath = subdir + os.sep
+                if file.endswith(".bms") or file.endswith(".bme") or file.endswith(".bml"):
+                    chart_list.append(parse_db(filepath, file))
+        # db = open("db.pnl", 'wb')
+        # pickle.dump(chart_list, db)
+    # else:
+        # db = open("db.pnl", 'rb')
+        # chart_list = pickle.load(db)
+    return chart_list
+
+
+def song_select(screen, window):
+    chart_list = load_charts()
+    select_font = pygame.font.Font("GenShinGothic-Medium.ttf", 70)
+    for chart in chart_list:
+        if chart.difficulty == 1:
+            color = "LawnGreen"
+        elif chart.difficulty == 2:
+            color = "DeepSkyBlue"
+        elif chart.difficulty == 3:
+            color = "Yellow"
+        elif chart.difficulty == 4:
+            color = "Red"
+        elif chart.difficulty == 5:
+            color = "Purple"
+        else:
+            color = "Grey"
+        chart.__setattr__("title_font", select_font.render(chart.title + " " + chart.subtitle, True, color))
+        if chart.title_font.get_width() > window.width / 3 * 2:
+            chart.title_font = pygame.transform.smoothscale(chart.title_font, (window.width // 3 * 2, chart.title_font.get_height()))
+        chart.__setattr__("artist_font", select_font.render(chart.artist + " " + chart.subartist, True, color))
+        if chart.artist_font.get_width() > window.width / 3 * 2:
+            chart.artist_font = pygame.transform.smoothscale(chart.artist_font, (window.width // 3 * 2, chart.artist_font.get_height()))
+        chart.__setattr__("playlevel_font", select_font.render(chart.playlevel, True, color))
+        chart.__setattr__("diff_font", select_font.render(str(chart.difficulty), True, "white"))
+        chart.__setattr__("notecount_font", select_font.render(str(chart.notecount), True, "white"))
+        chart.__setattr__("total_font", select_font.render(str(chart.total), True, "white"))
+    index = 0
+    while True:
+        screen.fill("DarkSlateGray")
+        pygame.draw.rect(screen, "DimGray", Rect(window.width / 3, 0, window.width / 3 * 2, window.height))
+        chart_list[index].__setattr__("title_rect", chart_list[index].title_font.get_rect())
+        chart_list[index].title_rect.topleft = (window.width / 3, 0)
+        chart_list[index].__setattr__("artist_rect", chart_list[index].artist_font.get_rect())
+        chart_list[index].artist_rect.topright = (window.width, chart_list[index].title_rect.bottom)
+        screen.blit(chart_list[index].title_font, chart_list[index].title_rect)
+        screen.blit(chart_list[index].artist_font, chart_list[index].artist_rect)
+        for i in range(index + 1, index + 10):
+            if i >= len(chart_list):
+                i = i % len(chart_list)
+            chart_list[i].__setattr__("title_rect", chart_list[i].title_font.get_rect())
+            chart_list[i].title_rect.topleft = (window.width / 3, chart_list[i-1].artist_rect.bottom)
+            chart_list[i].__setattr__("artist_rect", chart_list[i].artist_font.get_rect())
+            chart_list[i].artist_rect.topright = (window.width, chart_list[i].title_rect.bottom)
+            if i == (index + 2) % len(chart_list):
+                pygame.draw.rect(screen, "gold", Rect(window.width / 3, chart_list[i].title_rect.top, window.width / 3 * 2, chart_list[i].title_rect.height + chart_list[i].artist_rect.height))
+            screen.blit(chart_list[i].title_font, chart_list[i].title_rect)
+            screen.blit(chart_list[i].artist_font, chart_list[i].artist_rect)
+        pygame.display.flip()
+        command = keycheck_select()
+        if command in range(-1, 2):
+            index += command
+            index %= len(chart_list)
+        elif command == 2:
+            return chart_list[(index + 2) % len(chart_list)].filepath, chart_list[(index + 2) % len(chart_list)].file
+        elif command == 3:
+            return "quit"
 
 
 def p1visible_sounds_divide(p1visible_list):
@@ -509,33 +676,46 @@ def gameplay(window, screen, bgm_list, p1visible_list):
     current_judge = None
     current_keysound = [None, None, None, None, None, None, None, None]
     p1visible_sounds = p1visible_sounds_divide(p1visible_list)
+    force_quit = False
     while time.perf_counter_ns() - start < end + 2000000000:
         note_positions = update(screen, bgm_list, p1visible_list, time.perf_counter_ns() - start, window,
                                 note_positions)
         judgements, current_judge = draw_notes(window, screen, note_positions, judgements, time.perf_counter_ns() - start, current_judge, miss, miss_rect, great, great_rect, bad, bad_rect)
-        column_list = keycheck_gameplay()
+        command = keycheck_gameplay()
+        if type(command) is list:
+            column_list = command
+        elif command is True:
+            force_quit = True
+            break
         if column_list is not None:
             for column in ignore_list:
                 if column not in column_list:
                     ignore_list.remove(column)
             ignore_list, note_positions, judgements, current_judge, p1visible_sounds, current_keysound = play_notes(column_list, note_positions, time.perf_counter_ns() - start, judgements, ignore_list, current_judge, p1visible_sounds, current_keysound)
-    eval_screen(window, screen, judgements)
+    if force_quit is False:
+        eval_screen(window, screen, judgements)
 
 
 def main():
     """The main function of the program"""
     pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=1024)
     pygame.mixer.set_num_channels(100)
-    chart = parse(PATH + "\\J219.bms")
-    bgm_list, p1visible_list, total_time = divide(chart)
     pygame.init()
     pygame.font.init()
-    # screen size
-    screen = pygame.display.set_mode((1920, 1080), DOUBLEBUF | HWSURFACE, depth=16)
-    pygame.event.set_allowed([KEYDOWN, KEYUP, QUIT])
+    screen = pygame.display.set_mode((1920, 1080), DOUBLEBUF | HWSURFACE)
     screen.set_alpha(None)
     window = screen.get_rect()
-    gameplay(window, screen, bgm_list, p1visible_list)
+    while True:
+        command = song_select(screen, window)
+        if command == "quit":
+            break
+        else:
+            filepath, file = command
+        chart = parse(filepath, file)
+        bgm_list, p1visible_list, total_time = divide(chart)
+        gameplay(window, screen, bgm_list, p1visible_list)
+    pygame.quit()
+    sys.exit()
 
 
 if __name__ == "__main__":
